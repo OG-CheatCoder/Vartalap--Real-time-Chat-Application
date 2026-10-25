@@ -1,0 +1,41 @@
+vartalap/                         <-- Main Git Repository Root
+├── .gitignore                    <-- Ignores node_modules and .env in both folders
+├── README.md
+├── docs/                         <-- Put prd.md, architecture.md, tasks.md here
+│
+├── backend/                      <-- Partner A works here (Port 5000)
+│   ├── package.json              <-- Backend dependencies (express, mongoose, socket.io)
+│   ├── .env                      <-- MONGO_URI, JWT_SECRET, EMAIL_USER, EMAIL_PASS
+│   └── src/
+│       ├── config/
+│       │   └── db.js             <-- MongoDB connection logic
+│       ├── models/               <-- User.js, Group.js, Message.js
+│       ├── controllers/          <-- authController.js, groupController.js, chatController.js
+│       ├── routes/               <-- authRoutes.js, groupRoutes.js, messageRoutes.js
+│       ├── middlewares/          <-- authMiddleware.js (JWT check)
+│       ├── socket/
+│       │   └── socketHandler.js  <-- All Socket.io events (send_message, typing, online)
+│       ├── jobs/
+│       │   └── sessionCron.js    <-- node-cron job to close expired session groups
+│       └── server.js             <-- Entry point (combines Express + HTTP + Socket.io)
+│
+└── frontend/                     <-- Partner B works here (Port 5173)
+    ├── package.json              <-- Frontend dependencies (react, axios, socket.io-client)
+    ├── .env                      <-- VITE_API_URL=http://localhost:5000
+    ├── index.html
+    ├── vite.config.js
+    └── src/
+        ├── api/
+        │   └── axiosInstance.js  <-- Pre-configured Axios with JWT token header
+        ├── context/
+        │   ├── AuthContext.jsx   <-- Stores logged-in user state
+        │   └── SocketContext.jsx <-- Manages single Socket.io connection
+        ├── components/
+        │   ├── Sidebar/          <-- Search bar, Chat list, "Join by Group ID" modal
+        │   ├── ChatBox/          <-- Message feed, typing indicator, Countdown Header
+        │   └── GroupAdmin/       <-- Invite-Only request approvals, group mode toggle
+        ├── pages/
+        │   ├── LoginPage.jsx
+        │   ├── RegisterOtpPage.jsx
+        │   └── ChatDashboard.jsx
+        └── App.jsx
