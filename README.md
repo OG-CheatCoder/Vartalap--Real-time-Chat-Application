@@ -86,8 +86,3 @@ Start the React development server:
 ```bash
 npm run dev
 ```
-
-## Team Members
-
-* **ADITYA PRAKASH** (`NNM24CS019`)
-* **PAVANI CHEERAPUREDDY** (`NNM24CS172`)
