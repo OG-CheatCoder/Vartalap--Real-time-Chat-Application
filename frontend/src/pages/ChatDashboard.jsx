@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useSocket } from "../context/SocketContext";
 import axiosInstance from "../api/axiosInstance";
 import Sidebar from "../components/Sidebar";
 import ChatBox from "../components/ChatBox";
@@ -18,7 +19,9 @@ import {
 
 const ChatDashboard = () => {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const [groups, setGroups] = useState([]);
+  const [directChats, setDirectChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [showAdminDrawer, setShowAdminDrawer] = useState(false);
 
@@ -55,9 +58,162 @@ const ChatDashboard = () => {
     }
   };
 
+  // Fetch direct chats on mount
+  const fetchDirectChats = async () => {
+    try {
+      const res = await axiosInstance.get("/direct-chats");
+      if (res.data?.success) {
+        setDirectChats(res.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching direct chats:", err);
+    }
+  };
+
   useEffect(() => {
     fetchMyGroups();
+    fetchDirectChats();
   }, []);
+
+  // Handle real-time sidebar message update and sorting to top
+  const handleSidebarMessageUpdate = (newMsg) => {
+    if (!newMsg) return;
+
+    if (newMsg.chatType === "direct") {
+      setDirectChats((prev) => {
+        const index = prev.findIndex(
+          (c) => c._id?.toString() === newMsg.chatId?.toString()
+        );
+        if (index !== -1) {
+          const updated = { ...prev[index], lastMessage: newMsg };
+          const remaining = prev.filter((_, i) => i !== index);
+          return [updated, ...remaining];
+        }
+        fetchDirectChats();
+        return prev;
+      });
+    } else if (newMsg.chatType === "group") {
+      setGroups((prev) => {
+        const index = prev.findIndex(
+          (g) => g._id?.toString() === newMsg.chatId?.toString()
+        );
+        if (index !== -1) {
+          const updated = { ...prev[index], lastMessage: newMsg };
+          const remaining = prev.filter((_, i) => i !== index);
+          return [updated, ...remaining];
+        }
+        fetchMyGroups();
+        return prev;
+      });
+    }
+  };
+
+  // Handle group removal (leave or delete)
+  const handleGroupRemoved = (groupId) => {
+    setGroups((prev) => prev.filter((g) => g._id?.toString() !== groupId?.toString()));
+    setActiveChat((prev) =>
+      prev?.type === "group" && prev?.data?._id?.toString() === groupId?.toString()
+        ? null
+        : prev
+    );
+    setShowAdminDrawer(false);
+  };
+
+  // Real-time group sync (promotions, demotions, removals, settings, approvals)
+  const handleGroupSynced = (updatedGroup) => {
+    if (!updatedGroup?._id) return;
+    const gId = updatedGroup._id.toString();
+    const myId = (user?._id || user?.id)?.toString();
+    const amIMember = updatedGroup.members?.some(
+      (m) => (m?._id || m)?.toString() === myId
+    );
+
+    if (!amIMember) {
+      handleGroupRemoved(gId);
+      return;
+    }
+
+    setGroups((prev) => {
+      const exists = prev.some((g) => g._id?.toString() === gId);
+      if (exists) {
+        return prev.map((g) => (g._id?.toString() === gId ? { ...g, ...updatedGroup } : g));
+      }
+      return [updatedGroup, ...prev];
+    });
+
+    setActiveChat((prev) =>
+      prev?.type === "group" && prev?.data?._id?.toString() === gId
+        ? { ...prev, data: { ...prev.data, ...updatedGroup } }
+        : prev
+    );
+  };
+
+  // Sync edited or deleted lastMessage previews on sidebar
+  const handleLastMessagePatched = (patchedMsg) => {
+    const msgId = (patchedMsg._id || patchedMsg.messageId)?.toString();
+    if (!msgId) return;
+
+    const patchList = (list) =>
+      list.map((chat) => {
+        if ((chat.lastMessage?._id || chat.lastMessage)?.toString() !== msgId) return chat;
+        return {
+          ...chat,
+          lastMessage: patchedMsg._id
+            ? patchedMsg
+            : { ...chat.lastMessage, content: "This message was deleted", isDeletedForEveryone: true },
+        };
+      });
+
+    setGroups(patchList);
+    setDirectChats(patchList);
+  };
+
+  // Listen for socket events across chats
+  useEffect(() => {
+    if (!socket) return;
+
+    const onDeletedGroup = ({ groupId }) => handleGroupRemoved(groupId);
+
+    socket.on("message:new", handleSidebarMessageUpdate);
+    socket.on("sidebar:update", handleSidebarMessageUpdate);
+    socket.on("message:updated", handleLastMessagePatched);
+    socket.on("message:deleted_for_everyone", handleLastMessagePatched);
+    socket.on("group:updated", handleGroupSynced);
+    socket.on("group:deleted", onDeletedGroup);
+
+    return () => {
+      socket.off("message:new", handleSidebarMessageUpdate);
+      socket.off("sidebar:update", handleSidebarMessageUpdate);
+      socket.off("message:updated", handleLastMessagePatched);
+      socket.off("message:deleted_for_everyone", handleLastMessagePatched);
+      socket.off("group:updated", handleGroupSynced);
+      socket.off("group:deleted", onDeletedGroup);
+    };
+  }, [socket, user?._id, user?.id]);
+
+  // Handler for starting a direct conversation from user search
+  const handleSelectUser = async (targetUser) => {
+    try {
+      const res = await axiosInstance.post("/direct-chats", {
+        targetUserId: targetUser._id,
+      });
+
+      if (res.data?.success) {
+        const directChat = res.data.data;
+        setDirectChats((prev) => {
+          const exists = prev.some((c) => c._id === directChat._id);
+          return exists ? prev : [directChat, ...prev];
+        });
+        setActiveChat({
+          type: "direct",
+          data: directChat,
+          recipient: targetUser,
+        });
+      }
+    } catch (err) {
+      console.error("Error creating direct chat:", err);
+    }
+  };
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
@@ -134,6 +290,8 @@ const ChatDashboard = () => {
         activeChat={activeChat}
         setActiveChat={setActiveChat}
         groups={groups}
+        directChats={directChats}
+        onSelectUser={handleSelectUser}
         onOpenCreateGroup={() => setShowCreateModal(true)}
         onOpenJoinGroup={() => {
           setSearchTag("");
@@ -147,6 +305,9 @@ const ChatDashboard = () => {
       {/* Main Center Chat Pane */}
       <ChatBox
         activeChat={activeChat}
+        onMessageSent={handleSidebarMessageUpdate}
+        groups={groups}
+        directChats={directChats}
         onOpenAdmin={
           activeChat?.type === "group" ? () => setShowAdminDrawer((prev) => !prev) : null
         }
@@ -164,6 +325,8 @@ const ChatDashboard = () => {
             }));
             fetchMyGroups();
           }}
+          onLeaveGroup={handleGroupRemoved}
+          onDeleteGroup={handleGroupRemoved}
         />
       )}
 

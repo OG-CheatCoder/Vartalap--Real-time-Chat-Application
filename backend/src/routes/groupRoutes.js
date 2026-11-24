@@ -8,6 +8,9 @@ import {
   updateGroupSettings,
   togglePinMessage,
   removeMember,
+  leaveGroup,
+  updateMemberRole,
+  deleteGroup,
 } from "../controllers/groupController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 
@@ -23,5 +26,8 @@ router.post("/:groupId/requests/:userId", handleJoinRequest);
 router.patch("/:groupId/settings", updateGroupSettings);
 router.post("/:groupId/pin/:messageId", togglePinMessage);
 router.delete("/:groupId/members/:userId", removeMember);
+router.post("/:groupId/leave", leaveGroup);
+router.post("/:groupId/admins/:userId", updateMemberRole);
+router.delete("/:groupId", deleteGroup);
 
 export default router;

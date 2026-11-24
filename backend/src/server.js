@@ -2,12 +2,16 @@ import http from "http";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
 import { Server } from "socket.io";
 
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import groupRoutes from "./routes/groupRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import directChatRoutes from "./routes/directChatRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 import initSocketHandler from "./socket/socketHandler.js";
 import initSessionExpiryCron from "./jobs/sessionCron.js";
 
@@ -41,12 +45,15 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // API Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/direct-chats", directChatRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/users", messageRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

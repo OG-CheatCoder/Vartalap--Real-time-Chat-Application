@@ -54,6 +54,7 @@ export const initSocketHandler = (io) => {
     socket.on("message:send", ({ roomType, roomId, message }) => {
       const roomName = `${roomType}:${roomId}`;
       io.to(roomName).emit("message:new", message);
+      io.emit("sidebar:update", message);
     });
 
     // Disconnect handling
