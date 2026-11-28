@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import msgpackParser from "socket.io-msgpack-parser";
 import { useAuth } from "./AuthContext";
 
 const SocketContext = createContext(null);
@@ -22,6 +23,7 @@ export const SocketProvider = ({ children }) => {
 
     const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
     const newSocket = io(socketUrl, {
+      parser: msgpackParser,
       query: {
         userId: user._id || user.id,
       },

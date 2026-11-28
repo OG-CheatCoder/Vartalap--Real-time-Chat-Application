@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      index: true,
     },
     username: {
       type: String,
@@ -46,6 +47,17 @@ const userSchema = new mongoose.Schema(
     lastSeen: {
       type: Date,
       default: Date.now,
+    },
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    defaultDisappearingDuration: {
+      type: Number,
+      enum: [0, 86400, 604800, 2592000],
+      default: 0,
     },
   },
   {

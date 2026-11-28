@@ -6,6 +6,7 @@ import {
   joinGroup,
   handleJoinRequest,
   updateGroupSettings,
+  updateGroupDisappearingTimer,
   togglePinMessage,
   removeMember,
   leaveGroup,
@@ -24,6 +25,7 @@ router.get("/search", searchGroupByTag);
 router.post("/:groupId/join", joinGroup);
 router.post("/:groupId/requests/:userId", handleJoinRequest);
 router.patch("/:groupId/settings", updateGroupSettings);
+router.patch("/:groupId/disappearing", updateGroupDisappearingTimer);
 router.post("/:groupId/pin/:messageId", togglePinMessage);
 router.delete("/:groupId/members/:userId", removeMember);
 router.post("/:groupId/leave", leaveGroup);

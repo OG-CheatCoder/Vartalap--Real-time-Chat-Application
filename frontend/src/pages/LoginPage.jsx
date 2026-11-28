@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import axiosInstance from "../api/axiosInstance";
-import { Lock, AtSign, ArrowRight, ShieldCheck } from "lucide-react";
+import { Lock, AtSign, ArrowRight, ShieldCheck, Sun, Moon } from "lucide-react";
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [formData, setFormData] = useState({
     identifier: "",
     password: "",
@@ -32,7 +34,6 @@ const LoginPage = () => {
       }
     } catch (err) {
       if (err.response?.status === 403 && err.response?.data?.data?.email) {
-        // Redirect to OTP verification if not verified
         navigate("/verify-otp", { state: { email: err.response.data.data.email } });
       } else {
         setError(err.response?.data?.message || "Invalid credentials. Please try again.");
@@ -43,22 +44,33 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-2xl p-8 shadow-2xl backdrop-blur-xl">
+    <div className="min-h-[100dvh] bg-slate-50 dark:bg-[#0b0d10] flex items-center justify-center p-4 relative">
+      <button
+        type="button"
+        onClick={toggleTheme}
+        className="fixed top-4 right-4 p-2 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 shadow-sm hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+        title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      >
+        {isDark ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
+
+      <div className="w-full max-w-md bg-white dark:bg-[#11151b] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-xl">
         {/* Logo / Header */}
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 mx-auto flex items-center justify-center font-bold text-white text-xl shadow-lg shadow-indigo-500/30 mb-3">
+        <div className="text-center mb-7">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 mx-auto flex items-center justify-center font-bold text-white text-xl shadow-lg shadow-blue-500/25 mb-3">
             V
           </div>
-          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Welcome to Vartalap</h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
+            Welcome to Vartalap
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
             Privacy-first real-time messaging with zero-contact discovery
           </p>
         </div>
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-5 p-3 rounded-xl bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs flex items-center space-x-2">
+          <div className="mb-5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs flex items-center space-x-2">
             <span>{error}</span>
           </div>
         )}
@@ -66,11 +78,11 @@ const LoginPage = () => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-slate-300 block mb-1.5">
+            <label className="text-xs font-medium text-slate-700 dark:text-zinc-300 block mb-1.5">
               Username or Email
             </label>
             <div className="relative">
-              <AtSign size={16} className="absolute left-3.5 top-3 text-slate-500" />
+              <AtSign size={16} className="absolute left-3.5 top-3 text-slate-400 dark:text-zinc-500" />
               <input
                 type="text"
                 placeholder="aditya_p or user@domain.com"
@@ -78,17 +90,17 @@ const LoginPage = () => {
                 onChange={(e) =>
                   setFormData({ ...formData, identifier: e.target.value })
                 }
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-slate-50 dark:bg-[#0b0d10] border border-slate-200 dark:border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-zinc-200 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-300 block mb-1.5">
+            <label className="text-xs font-medium text-slate-700 dark:text-zinc-300 block mb-1.5">
               Password
             </label>
             <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-3 text-slate-500" />
+              <Lock size={16} className="absolute left-3.5 top-3 text-slate-400 dark:text-zinc-500" />
               <input
                 type="password"
                 placeholder="••••••••"
@@ -96,7 +108,7 @@ const LoginPage = () => {
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
                 }
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-slate-50 dark:bg-[#0b0d10] border border-slate-200 dark:border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-zinc-200 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
@@ -104,7 +116,7 @@ const LoginPage = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 disabled:opacity-60"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-600/25 transition flex items-center justify-center space-x-2 disabled:opacity-60"
           >
             <span>{loading ? "Authenticating..." : "Sign In"}</span>
             <ArrowRight size={14} />
@@ -112,12 +124,12 @@ const LoginPage = () => {
         </form>
 
         {/* Footer Link */}
-        <div className="mt-6 pt-6 border-t border-slate-800/80 text-center">
-          <p className="text-xs text-slate-400">
+        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-zinc-800/80 text-center">
+          <p className="text-xs text-slate-500 dark:text-zinc-400">
             Don't have an account?{" "}
             <Link
               to="/register"
-              className="text-indigo-400 hover:text-indigo-300 font-medium transition"
+              className="text-blue-600 dark:text-indigo-400 hover:underline font-medium transition"
             >
               Register with Email OTP
             </Link>
@@ -125,7 +137,7 @@ const LoginPage = () => {
         </div>
 
         {/* Security badge */}
-        <div className="mt-4 flex items-center justify-center space-x-1.5 text-[11px] text-slate-500">
+        <div className="mt-4 flex items-center justify-center space-x-1.5 text-[11px] text-slate-500 dark:text-zinc-500">
           <ShieldCheck size={13} className="text-emerald-500" />
           <span>One-Account-Per-Email Guaranteed</span>
         </div>

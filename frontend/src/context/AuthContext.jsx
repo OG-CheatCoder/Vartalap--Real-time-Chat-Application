@@ -45,6 +45,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("vartalap_token");
   };
 
+  const updateUser = (updatedUserData) => {
+    setUser(updatedUserData);
+    localStorage.setItem("vartalap_user", JSON.stringify(updatedUserData));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -54,6 +59,7 @@ export const AuthProvider = ({ children }) => {
         loading,
         login,
         logout,
+        updateUser,
         setUser,
       }}
     >

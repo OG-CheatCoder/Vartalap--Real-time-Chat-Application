@@ -48,6 +48,10 @@ const messageSchema = new mongoose.Schema(
       ref: "Message",
       default: null,
     },
+    replyPreview: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     isPinned: {
       type: Boolean,
       default: false,
@@ -75,6 +79,26 @@ const messageSchema = new mongoose.Schema(
     editedAt: {
       type: Date,
       default: null,
+    },
+    // Optional disappearing message deadline
+    disappearAt: {
+      type: Date,
+      default: null,
+    },
+    // Ephemeral delivery queue: recipients whose devices haven't confirmed receipt yet.
+    // Once empty, the server deletes the document immediately.
+    pendingRecipients: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true,
+      },
+    ],
+    // 30-day offline delivery retry limit (auto-purged if recipient stays offline)
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      index: { expireAfterSeconds: 0 },
     },
   },
   {

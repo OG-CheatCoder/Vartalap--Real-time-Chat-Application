@@ -57,6 +57,10 @@ const groupSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    startsAt: {
+      type: Date,
+      default: null,
+    },
     expiresAt: {
       type: Date,
       default: null,
@@ -64,8 +68,13 @@ const groupSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "expired"],
+      enum: ["scheduled", "active", "expired"],
       default: "active",
+    },
+    disappearingDuration: {
+      type: Number,
+      enum: [0, 86400, 604800, 2592000],
+      default: 0,
     },
     pinnedMessages: [
       {

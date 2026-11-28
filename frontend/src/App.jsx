@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import LoginPage from "./pages/LoginPage";
 import RegisterOtpPage from "./pages/RegisterOtpPage";
 import ChatDashboard from "./pages/ChatDashboard";
@@ -11,7 +12,7 @@ const ProtectedRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
+      <div className="h-[100dvh] w-screen bg-slate-50 dark:bg-[#0b0d10] flex items-center justify-center text-slate-500 dark:text-zinc-400 text-xs">
         <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -26,7 +27,7 @@ const PublicRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
+      <div className="h-[100dvh] w-screen bg-slate-50 dark:bg-[#0b0d10] flex items-center justify-center text-slate-500 dark:text-zinc-400 text-xs">
         <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -54,10 +55,7 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
-      <Route
-        path="/verify-otp"
-        element={<RegisterOtpPage />}
-      />
+      <Route path="/verify-otp" element={<RegisterOtpPage />} />
       <Route
         path="/dashboard"
         element={
@@ -74,11 +72,13 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <SocketProvider>
-          <AppRoutes />
-        </SocketProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <AppRoutes />
+          </SocketProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

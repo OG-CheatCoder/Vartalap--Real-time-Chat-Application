@@ -1,4 +1,12 @@
+import {
+  acknowledgeMessagesForUser,
+  processSeenReceipts,
+} from "../controllers/chatController.js";
+
 const onlineUsers = new Map(); // userId -> Set(socketId)
+
+export const isUserOnline = (userId) =>
+  Boolean(userId && onlineUsers.has(userId.toString()));
 
 export const initSocketHandler = (io) => {
   io.on("connection", (socket) => {
@@ -10,31 +18,27 @@ export const initSocketHandler = (io) => {
       }
       onlineUsers.get(userId).add(socket.id);
 
-      // Join user's personal notification room
+      // Personal notification & direct-routing room
       socket.join(`user:${userId}`);
-
-      // Broadcast online status to all clients
       io.emit("presence:online_list", Array.from(onlineUsers.keys()));
       console.log(`[Socket] User connected: ${userId} (Socket ID: ${socket.id})`);
     }
 
-    // Join chat room (direct or group)
     socket.on("room:join", ({ roomType, roomId }) => {
-      const roomName = `${roomType}:${roomId}`;
-      socket.join(roomName);
-      console.log(`[Socket] ${socket.id} joined room ${roomName}`);
+      if (roomType && roomId) {
+        socket.join(`${roomType}:${roomId}`);
+      }
     });
 
-    // Leave chat room
     socket.on("room:leave", ({ roomType, roomId }) => {
-      const roomName = `${roomType}:${roomId}`;
-      socket.leave(roomName);
+      if (roomType && roomId) {
+        socket.leave(`${roomType}:${roomId}`);
+      }
     });
 
-    // Typing indicators
+    // Direct WebSocket routing for typing indicators (zero DB persistence)
     socket.on("typing:start", ({ roomType, roomId, username }) => {
-      const roomName = `${roomType}:${roomId}`;
-      socket.to(roomName).emit("typing:update", {
+      socket.to(`${roomType}:${roomId}`).emit("typing:update", {
         roomId,
         username,
         isTyping: true,
@@ -42,22 +46,33 @@ export const initSocketHandler = (io) => {
     });
 
     socket.on("typing:stop", ({ roomType, roomId, username }) => {
-      const roomName = `${roomType}:${roomId}`;
-      socket.to(roomName).emit("typing:update", {
+      socket.to(`${roomType}:${roomId}`).emit("typing:update", {
         roomId,
         username,
         isTyping: false,
       });
     });
 
-    // Send message real-time broadcast
-    socket.on("message:send", ({ roomType, roomId, message }) => {
-      const roomName = `${roomType}:${roomId}`;
-      io.to(roomName).emit("message:new", message);
-      io.emit("sidebar:update", message);
+    // Device-level delivery ACK -> deletes delivered messages from server & sends delivered ticks
+    socket.on("message:ack", async ({ messageIds = [], eventIds = [] }) => {
+      if (!userId) return;
+      try {
+        await acknowledgeMessagesForUser(io, userId, messageIds, eventIds);
+      } catch (err) {
+        console.error("[Socket ACK Error]", err.message);
+      }
     });
 
-    // Disconnect handling
+    // Read/Seen receipt -> sets sender's tick to bright blue (or queues PendingEvent if sender offline)
+    socket.on("message:seen", async ({ items = [] }) => {
+      if (!userId) return;
+      try {
+        await processSeenReceipts(io, userId, items);
+      } catch (err) {
+        console.error("[Socket SEEN Error]", err.message);
+      }
+    });
+
     socket.on("disconnect", () => {
       if (userId && onlineUsers.has(userId)) {
         const userSockets = onlineUsers.get(userId);

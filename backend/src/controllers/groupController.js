@@ -3,10 +3,23 @@ import Group from "../models/Group.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 
-const generateNano = customAlphabet("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ", 4);
-const generateGroupTag = () => `#VRT-${generateNano()}`;
+// Pure random 8-character alphanumeric Group ID (no static prefix)
+const generateNano = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 8);
+const generateGroupTag = () => `#${generateNano()}`;
 
-// Populate helper to keep all group responses uniform
+const MODE_LABELS = {
+  public: "Anyone Can Join",
+  invite_only: "Invite Only",
+  closed: "Closed",
+};
+
+const DURATION_LABELS = {
+  0: "Off",
+  86400: "24 hours",
+  604800: "7 days",
+  2592000: "30 days",
+};
+
 const getPopulatedGroup = (groupId) =>
   Group.findById(groupId)
     .populate("admin", "fullName username avatarUrl")
@@ -15,10 +28,8 @@ const getPopulatedGroup = (groupId) =>
     .populate("pendingRequests.user", "fullName username avatarUrl")
     .populate("lastMessage");
 
-// Get ID strings cleanly
 const toId = (val) => (val?._id || val)?.toString();
 
-// Check if user is any admin
 export const isUserAdmin = (group, userId) => {
   if (!group || !userId) return false;
   const uId = userId.toString();
@@ -26,8 +37,6 @@ export const isUserAdmin = (group, userId) => {
   return Array.isArray(group.admins) && group.admins.some((a) => toId(a) === uId);
 };
 
-// Primary admin is always the original creator until they step down or leave,
-// at which point group.admins[0] becomes the longest-serving admin.
 export const getPrimaryAdminId = (group) => {
   if (!group) return null;
   if (Array.isArray(group.admins) && group.admins.length > 0) {
@@ -36,7 +45,6 @@ export const getPrimaryAdminId = (group) => {
   return toId(group.admin);
 };
 
-// Ensure admins array is initialized cleanly and primary admin matches admins[0]
 const syncAdminsOrder = (group) => {
   if (!group.admins || group.admins.length === 0) {
     group.admins = group.admin ? [group.admin] : [];
@@ -45,7 +53,6 @@ const syncAdminsOrder = (group) => {
   }
 };
 
-// Broadcast group changes to the group room and individual member personal rooms
 const emitGroupSync = (io, populatedGroup, extraUserIds = []) => {
   if (!io || !populatedGroup) return;
   const groupId = populatedGroup._id.toString();
@@ -63,17 +70,20 @@ const emitGroupSync = (io, populatedGroup, extraUserIds = []) => {
   });
 };
 
-// Emit system announcement helper
+// Emit system announcement helper (queued ephemerally until all group members ACK receipt)
 const createSystemAnnouncement = async (io, group, actorId, content) => {
+  const memberIds = (group.members || []).map((m) => toId(m)).filter(Boolean);
+
   const sysMsg = await Message.create({
     chatType: "group",
     chatId: group._id,
     sender: actorId,
     content,
     isSystemMessage: true,
+    pendingRecipients: memberIds,
   });
 
-  group.lastMessage = sysMsg._id;
+  group.updatedAt = new Date();
   await group.save();
 
   const populatedMsg = await Message.findById(sysMsg._id).populate(
@@ -83,17 +93,30 @@ const createSystemAnnouncement = async (io, group, actorId, content) => {
 
   if (io) {
     io.to(`group:${group._id}`).emit("message:new", populatedMsg);
-    io.emit("sidebar:update", populatedMsg);
+    memberIds.forEach((mId) => {
+      io.to(`user:${mId}`).emit("message:new", populatedMsg);
+      io.to(`user:${mId}`).emit("sidebar:update", populatedMsg);
+    });
   }
 
   return populatedMsg;
 };
 
-// @desc    Create a new group (Permanent or Session-Based)
+// @desc    Create a new group (Permanent or Scheduled/Session-Based)
 // @route   POST /api/groups
 export const createGroup = async (req, res) => {
   try {
-    const { name, description, joinMode, isSessionGroup, durationMinutes, customExpiresAt } = req.body;
+    const {
+      name,
+      description,
+      joinMode,
+      isSessionGroup,
+      durationMinutes,
+      startsAt: rawStartsAt,
+      expiresAt: rawExpiresAt,
+      customExpiresAt,
+      disappearingDuration = 0,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({ success: false, message: "Group name is required." });
@@ -104,16 +127,51 @@ export const createGroup = async (req, res) => {
       groupTag = generateGroupTag();
     }
 
+    let startsAt = null;
     let expiresAt = null;
+    let initialStatus = "active";
+
     if (isSessionGroup) {
-      if (customExpiresAt) {
-        expiresAt = new Date(customExpiresAt);
+      const now = new Date();
+      startsAt = rawStartsAt ? new Date(rawStartsAt) : now;
+      if (Number.isNaN(startsAt.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid session start date/time." });
+      }
+
+      if (rawExpiresAt || customExpiresAt) {
+        expiresAt = new Date(rawExpiresAt || customExpiresAt);
       } else if (durationMinutes) {
-        expiresAt = new Date(Date.now() + Number(durationMinutes) * 60 * 1000);
+        expiresAt = new Date(startsAt.getTime() + Number(durationMinutes) * 60 * 1000);
       } else {
-        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        expiresAt = new Date(startsAt.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      if (Number.isNaN(expiresAt.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid session end date/time." });
+      }
+
+      if (expiresAt <= startsAt) {
+        return res.status(400).json({
+          success: false,
+          message: "Session end date/time must be strictly after start date/time.",
+        });
+      }
+
+      if (expiresAt <= now) {
+        return res.status(400).json({
+          success: false,
+          message: "Session end date/time must be in the future.",
+        });
+      }
+
+      if (startsAt > now) {
+        initialStatus = "scheduled";
       }
     }
+
+    const validDisappear = [0, 86400, 604800, 2592000].includes(Number(disappearingDuration))
+      ? Number(disappearingDuration)
+      : 0;
 
     const group = await Group.create({
       name: name.trim(),
@@ -124,8 +182,10 @@ export const createGroup = async (req, res) => {
       members: [req.user._id],
       joinMode: ["public", "invite_only", "closed"].includes(joinMode) ? joinMode : "public",
       isSessionGroup: Boolean(isSessionGroup),
+      startsAt,
       expiresAt,
-      status: "active",
+      status: initialStatus,
+      disappearingDuration: validDisappear,
       pinnedMessages: [],
     });
 
@@ -156,7 +216,19 @@ export const getMyGroups = async (req, res) => {
       .populate("lastMessage")
       .sort({ updatedAt: -1 });
 
-    res.status(200).json({ success: true, data: groups });
+    const cleanGroups = groups.map((g) => {
+      const obj = g.toObject();
+      if (
+        obj.lastMessage?.deletedFor?.some(
+          (id) => id.toString() === req.user._id.toString()
+        )
+      ) {
+        obj.lastMessage = null;
+      }
+      return obj;
+    });
+
+    res.status(200).json({ success: true, data: cleanGroups });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -165,19 +237,17 @@ export const getMyGroups = async (req, res) => {
   }
 };
 
-// @desc    Search group by unique tag (#VRT-XXXX)
+// @desc    Search group by random unique ID (#XXXXXXXX or #VRT-XXXX)
 // @route   GET /api/groups/search
 export const searchGroupByTag = async (req, res) => {
   try {
     const { tag } = req.query;
     if (!tag) {
-      return res.status(400).json({ success: false, message: "Please provide a group tag to search." });
+      return res.status(400).json({ success: false, message: "Please provide a group ID to search." });
     }
 
-    let normalizedTag = tag.trim().toUpperCase();
-    if (!normalizedTag.startsWith("#")) {
-      normalizedTag = normalizedTag.startsWith("VRT-") ? `#${normalizedTag}` : `#VRT-${normalizedTag}`;
-    }
+    const raw = tag.trim().toUpperCase();
+    const normalizedTag = raw.startsWith("#") ? raw : `#${raw}`;
 
     const group = await Group.findOne({ groupTag: normalizedTag })
       .populate("admin", "fullName username avatarUrl")
@@ -252,7 +322,6 @@ export const joinGroup = async (req, res) => {
       });
     }
 
-    // Public instant join
     group.members.push(req.user._id);
     await createSystemAnnouncement(
       req.io,
@@ -344,7 +413,7 @@ export const handleJoinRequest = async (req, res) => {
   }
 };
 
-// @desc    Admin update group settings
+// @desc    Admin update group settings + broadcast mode-change announcement
 // @route   PATCH /api/groups/:groupId/settings
 export const updateGroupSettings = async (req, res) => {
   try {
@@ -360,8 +429,14 @@ export const updateGroupSettings = async (req, res) => {
       return res.status(403).json({ success: false, message: "Only group admins can modify group settings." });
     }
 
+    const prevMode = group.joinMode;
+    let modeChanged = false;
+
     if (joinMode && ["public", "invite_only", "closed"].includes(joinMode)) {
-      group.joinMode = joinMode;
+      if (joinMode !== prevMode) {
+        group.joinMode = joinMode;
+        modeChanged = true;
+      }
     }
 
     if (typeof description === "string") {
@@ -374,7 +449,17 @@ export const updateGroupSettings = async (req, res) => {
       group.status = "active";
     }
 
-    await group.save();
+    if (modeChanged) {
+      await createSystemAnnouncement(
+        req.io,
+        group,
+        req.user._id,
+        `@${req.user.username} changed the group mode to "${MODE_LABELS[group.joinMode]}"`
+      );
+    } else {
+      await group.save();
+    }
+
     const populatedGroup = await getPopulatedGroup(groupId);
     emitGroupSync(req.io, populatedGroup);
 
@@ -391,7 +476,56 @@ export const updateGroupSettings = async (req, res) => {
   }
 };
 
-// @desc    Leave group (sole admin must designate successor)
+// @desc    Admin update group disappearing message timer
+// @route   PATCH /api/groups/:groupId/disappearing
+export const updateGroupDisappearingTimer = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const duration = Number(req.body.duration);
+
+    if (![0, 86400, 604800, 2592000].includes(duration)) {
+      return res.status(400).json({
+        success: false,
+        message: "Duration must be 0 (Off), 86400 (24h), 604800 (7d), or 2592000 (30d).",
+      });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ success: false, message: "Group not found." });
+    }
+
+    if (!isUserAdmin(group, req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only group admins can configure disappearing messages.",
+      });
+    }
+
+    group.disappearingDuration = duration;
+    const text =
+      duration > 0
+        ? `@${req.user.username} turned on disappearing messages (${DURATION_LABELS[duration]}).`
+        : `@${req.user.username} turned off disappearing messages.`;
+
+    await createSystemAnnouncement(req.io, group, req.user._id, text);
+    const populatedGroup = await getPopulatedGroup(groupId);
+    emitGroupSync(req.io, populatedGroup);
+
+    res.status(200).json({
+      success: true,
+      message: text,
+      data: populatedGroup,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error updating group disappearing timer.",
+    });
+  }
+};
+
+// @desc    Leave group
 // @route   POST /api/groups/:groupId/leave
 export const leaveGroup = async (req, res) => {
   try {
@@ -521,8 +655,6 @@ export const updateMemberRole = async (req, res) => {
       }
 
       const isSelfDemotion = targetUserId === actorId;
-      // Only the first/longest-serving admin can demote another admin.
-      // Any admin (including primary admin) may voluntarily demote themselves.
       if (!isSelfDemotion && actorId !== primaryAdminId) {
         return res.status(403).json({
           success: false,
@@ -556,7 +688,7 @@ export const updateMemberRole = async (req, res) => {
   }
 };
 
-// @desc    Remove member (protects primary admin and co-admins from non-primary admins)
+// @desc    Remove member
 // @route   DELETE /api/groups/:groupId/members/:userId
 export const removeMember = async (req, res) => {
   try {
