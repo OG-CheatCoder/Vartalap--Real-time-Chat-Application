@@ -38,3 +38,7 @@ Thumbs.db
 *.sw?
 
 backend/uploads/
+uploads/
+docs/
+project_readme.md
+
